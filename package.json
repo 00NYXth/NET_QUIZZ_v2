@@ -1,13 +1,5 @@
 {
-  "name": "quiz-app",
-  "version": "1.0.0",
-  "dependencies": {
-    "mongodb": "^6.0.0",
-    "bcryptjs": "^2.4.3",
-    "jsonwebtoken": "^9.0.0"
-  },
-  "scripts": {
-    "dev": "npx vercel dev",
-    "deploy": "npx vercel --prod"
+  "engines": {
+    "node": "20.x"
   }
 }

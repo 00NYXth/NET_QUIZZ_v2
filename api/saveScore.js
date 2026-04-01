@@ -1,7 +1,7 @@
 import { MongoClient } from "mongodb";
 import jwt from "jsonwebtoken";
 
-const client = new MongoClient(process.env.MONGO_URI);
+const client = new MongoClient(process.env.MONGODB_URI);
 
 export default async function handler(req, res) {
   const token = req.headers.authorization?.split(" ")[1];
@@ -18,9 +18,10 @@ export default async function handler(req, res) {
       createdAt: new Date()
     });
 
-    res.status(200).json({ message: "Saved" });
+    return res.status(200).json({ message: "Saved" });
 
-  } catch {
-    res.status(401).json({ error: "Unauthorized" });
+  } catch (err) {
+    console.error("SaveScore error:", err);
+    return res.status(401).json({ error: "Unauthorized" });
   }
 }

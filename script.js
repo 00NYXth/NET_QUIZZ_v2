@@ -856,3 +856,352 @@ $('browse-search').addEventListener('input', e => {
     ? `(${list.length} of ${ALL_QUESTIONS.length})`
     : `(${ALL_QUESTIONS.length})`;
 });
+
+ 
+/* ── Admin email list (citit din JWT după login) ──────────── */
+const ADMIN_EMAILS = (window.__ADMIN_EMAILS__ || '').split(',').map(e => e.trim().toLowerCase());
+ 
+function checkAdmin() {
+  if (!authEmail) return false;
+  return ADMIN_EMAILS.includes(authEmail.toLowerCase());
+}
+ 
+/* ── Actualizează user bar cu butonul Admin dacă e cazul ──── */
+function updateUserBarExtended() {
+  updateUserBar(); // funcția existentă
+  const adminBtn = $('btn-admin-panel');
+  if (adminBtn) adminBtn.style.display = checkAdmin() ? 'inline-flex' : 'none';
+}
+ 
+// Înlocuiește apelurile existente la updateUserBar() cu updateUserBarExtended()
+// sau adaugă la finalul funcției onAuthSuccess:
+const _origOnAuthSuccess = onAuthSuccess;
+// Patch onAuthSuccess to also check admin
+function onAuthSuccess(token, email) {
+  authToken = token;
+  authEmail = email;
+  localStorage.setItem('token', token);
+  localStorage.setItem('email', email);
+  updateUserBarExtended();
+  showScreen('screen-home');
+}
+ 
+// La încărcare, dacă deja logat:
+if (authToken && authEmail) {
+  updateUserBarExtended();
+}
+ 
+/* ════════════════════════════════════════════════════════════
+   DASHBOARD
+   ════════════════════════════════════════════════════════════ */
+ 
+async function openDashboard() {
+  showScreen('screen-dashboard');
+  await Promise.all([loadProfile(), loadDashboardScores()]);
+}
+ 
+async function loadProfile() {
+  try {
+    const res = await fetch('/api/profile', {
+      headers: { Authorization: 'Bearer ' + authToken }
+    });
+    if (!res.ok) return;
+    const user = await res.json();
+    $('profile-email').value = user.email || '';
+    $('profile-name').value = user.displayName || '';
+  } catch {}
+}
+ 
+async function loadDashboardScores() {
+  const histEl = $('dash-history');
+  histEl.innerHTML = '<p class="dash-empty">Loading…</p>';
+ 
+  try {
+    const res = await fetch('/api/scores', {
+      headers: { Authorization: 'Bearer ' + authToken }
+    });
+    if (!res.ok) { histEl.innerHTML = '<p class="dash-empty">Could not load scores.</p>'; return; }
+    const { scores } = await res.json();
+ 
+    if (!scores.length) {
+      histEl.innerHTML = '<p class="dash-empty">No sessions yet. Start a quiz!</p>';
+      $('ds-total').textContent = 0;
+      $('ds-best').textContent = '–';
+      $('ds-avg').textContent = '–';
+      $('ds-exams').textContent = 0;
+      return;
+    }
+ 
+    // Stats summary
+    const exams = scores.filter(s => s.mode === 'exam');
+    const allPct = scores.map(s => Math.round(s.correct / s.total * 100));
+    const avgPct = Math.round(allPct.reduce((a, b) => a + b, 0) / allPct.length);
+    const bestPct = Math.max(...allPct);
+ 
+    $('ds-total').textContent = scores.length;
+    $('ds-best').textContent = bestPct + '%';
+    $('ds-avg').textContent = avgPct + '%';
+    $('ds-exams').textContent = exams.length;
+ 
+    // History table
+    histEl.innerHTML = renderScoreRows(scores);
+  } catch {
+    histEl.innerHTML = '<p class="dash-empty">Error loading history.</p>';
+  }
+}
+ 
+function renderScoreRows(scores) {
+  return `<table class="score-table">
+    <thead><tr>
+      <th>Date</th><th>Mode</th><th>Correct</th><th>Result</th>
+    </tr></thead>
+    <tbody>
+      ${scores.map(s => {
+        const d = new Date(s.createdAt).toLocaleDateString('ro-RO', { day:'2-digit', month:'short', year:'numeric' });
+        const pct = Math.round(s.correct / s.total * 100);
+        const modeLabel = s.mode === 'exam' ? '🎓 Exam' : s.mode === 'full' ? '📚 Full' : `✏️ ${s.mode}Q`;
+        const result = s.mode === 'exam'
+          ? (s.score >= 700
+            ? `<span class="badge badge-pass">PASS ${s.score}pts</span>`
+            : `<span class="badge badge-fail">FAIL ${s.score}pts</span>`)
+          : `<span class="badge ${pct>=70?'badge-pass':'badge-fail'}">${pct}%</span>`;
+        return `<tr>
+          <td>${d}</td>
+          <td>${modeLabel}</td>
+          <td>${s.correct}/${s.total}</td>
+          <td>${result}</td>
+        </tr>`;
+      }).join('')}
+    </tbody>
+  </table>`;
+}
+ 
+async function saveProfile() {
+  const btn = $('btn-save-profile');
+  const msgEl = $('profile-msg');
+  const newEmail = $('profile-email').value.trim();
+  const displayName = $('profile-name').value.trim();
+  const currentPassword = $('profile-cur-pw').value;
+  const newPassword = $('profile-new-pw').value;
+ 
+  msgEl.style.display = 'none';
+  const label = btn.querySelector('.btn-label');
+  const spinner = btn.querySelector('.btn-spinner');
+  label.style.display = 'none';
+  spinner.style.display = 'inline-flex';
+  btn.disabled = true;
+ 
+  try {
+    const body = { newEmail, displayName };
+    if (newPassword) { body.currentPassword = currentPassword; body.newPassword = newPassword; }
+ 
+    const res = await fetch('/api/profile', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + authToken },
+      body: JSON.stringify(body)
+    });
+    const data = await res.json();
+ 
+    if (!res.ok) {
+      msgEl.textContent = data.error;
+      msgEl.className = 'auth-msg auth-msg--error';
+      msgEl.style.display = 'block';
+      return;
+    }
+ 
+    // Update email in memory if changed
+    if (data.email && data.email !== authEmail) {
+      authEmail = data.email;
+      localStorage.setItem('email', data.email);
+      updateUserBarExtended();
+    }
+ 
+    msgEl.textContent = '✓ ' + data.message;
+    msgEl.className = 'auth-msg auth-msg--success';
+    msgEl.style.display = 'block';
+    $('profile-cur-pw').value = '';
+    $('profile-new-pw').value = '';
+  } catch {
+    msgEl.textContent = 'Network error. Please try again.';
+    msgEl.className = 'auth-msg auth-msg--error';
+    msgEl.style.display = 'block';
+  } finally {
+    label.style.display = 'inline';
+    spinner.style.display = 'none';
+    btn.disabled = false;
+  }
+}
+ 
+/* ════════════════════════════════════════════════════════════
+   ADMIN PANEL
+   ════════════════════════════════════════════════════════════ */
+ 
+let _allAdminUsers = [];
+ 
+async function openAdminPanel() {
+  if (!checkAdmin()) { alert('Access denied.'); return; }
+  showScreen('screen-admin');
+  await loadAdminUsers();
+}
+ 
+async function loadAdminUsers() {
+  const list = $('admin-user-list');
+  list.innerHTML = '<p class="dash-empty">Loading users…</p>';
+ 
+  try {
+    const res = await fetch('/api/admin?action=users', {
+      headers: { Authorization: 'Bearer ' + authToken }
+    });
+    if (!res.ok) { list.innerHTML = '<p class="dash-empty">Failed to load users.</p>'; return; }
+    const { users } = await res.json();
+    _allAdminUsers = users;
+    renderAdminUsers(users);
+  } catch {
+    list.innerHTML = '<p class="dash-empty">Network error.</p>';
+  }
+}
+ 
+function filterAdminUsers() {
+  const term = $('admin-search').value.toLowerCase().trim();
+  const filtered = term
+    ? _allAdminUsers.filter(u =>
+        (u.email || '').toLowerCase().includes(term) ||
+        (u.displayName || '').toLowerCase().includes(term))
+    : _allAdminUsers;
+  renderAdminUsers(filtered);
+}
+ 
+function renderAdminUsers(users) {
+  const list = $('admin-user-list');
+  $('admin-user-count').textContent = users.length + ' users';
+ 
+  if (!users.length) {
+    list.innerHTML = '<p class="dash-empty">No users found.</p>';
+    return;
+  }
+ 
+  list.innerHTML = users.map(u => {
+    const date = new Date(u.createdAt).toLocaleDateString('ro-RO', { day:'2-digit', month:'short', year:'numeric' });
+    const lastAct = u.lastActivity
+      ? new Date(u.lastActivity).toLocaleDateString('ro-RO', { day:'2-digit', month:'short' })
+      : '–';
+    const isAdminUser = (window.__ADMIN_EMAILS__ || '').split(',').map(e => e.trim().toLowerCase()).includes(u.email?.toLowerCase());
+    return `<div class="admin-user-row glass-card" onclick="openAdminModal('${u._id}', '${escH(u.email||'')}', '${escH(u.displayName||'')}')">
+      <div class="aur-avatar">${(u.email||'?').charAt(0).toUpperCase()}</div>
+      <div class="aur-info">
+        <div class="aur-email">${escH(u.email || '–')} ${isAdminUser ? '<span class="badge badge-admin">ADMIN</span>' : ''}</div>
+        <div class="aur-meta">${escH(u.displayName || '')} · Joined ${date} · Last active ${lastAct}</div>
+      </div>
+      <div class="aur-stats">
+        <span class="badge badge-neutral">${u.scoreCount} sessions</span>
+      </div>
+      <svg class="aur-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="9 18 15 12 9 6"/>
+      </svg>
+    </div>`;
+  }).join('');
+}
+ 
+function openAdminModal(userId, email, displayName) {
+  $('modal-user-id').value = userId;
+  $('modal-email').value = email;
+  $('modal-name').value = displayName;
+  $('modal-password').value = '';
+  $('modal-title').textContent = 'Edit: ' + email;
+  $('admin-modal-msg').style.display = 'none';
+  $('admin-modal-overlay').style.display = 'flex';
+  loadModalScores(userId);
+}
+ 
+function closeAdminModal(event) {
+  if (!event || event.target === $('admin-modal-overlay')) {
+    $('admin-modal-overlay').style.display = 'none';
+  }
+}
+ 
+async function loadModalScores(userId) {
+  $('modal-scores-list').innerHTML = '<p class="dash-empty">Loading…</p>';
+  try {
+    const res = await fetch('/api/admin?action=scores&userId=' + userId, {
+      headers: { Authorization: 'Bearer ' + authToken }
+    });
+    const { scores } = await res.json();
+    if (!scores.length) {
+      $('modal-scores-list').innerHTML = '<p class="dash-empty">No sessions yet.</p>';
+      return;
+    }
+    $('modal-scores-list').innerHTML = renderScoreRows(scores);
+  } catch {
+    $('modal-scores-list').innerHTML = '<p class="dash-empty">Failed to load scores.</p>';
+  }
+}
+ 
+async function submitAdminEdit() {
+  const userId = $('modal-user-id').value;
+  const newEmail = $('modal-email').value.trim();
+  const displayName = $('modal-name').value.trim();
+  const newPassword = $('modal-password').value;
+  const msgEl = $('admin-modal-msg');
+ 
+  $('modal-spinner').style.display = 'inline-flex';
+  msgEl.style.display = 'none';
+ 
+  try {
+    const body = { userId, newEmail, displayName };
+    if (newPassword) body.newPassword = newPassword;
+ 
+    const res = await fetch('/api/admin', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + authToken },
+      body: JSON.stringify(body)
+    });
+    const data = await res.json();
+ 
+    if (!res.ok) {
+      msgEl.textContent = data.error;
+      msgEl.className = 'auth-msg auth-msg--error';
+      msgEl.style.display = 'block';
+      return;
+    }
+ 
+    msgEl.textContent = '✓ ' + data.message;
+    msgEl.className = 'auth-msg auth-msg--success';
+    msgEl.style.display = 'block';
+    $('modal-password').value = '';
+    await loadAdminUsers(); // refresh list
+  } catch {
+    msgEl.textContent = 'Network error.';
+    msgEl.className = 'auth-msg auth-msg--error';
+    msgEl.style.display = 'block';
+  } finally {
+    $('modal-spinner').style.display = 'none';
+  }
+}
+ 
+async function deleteUser() {
+  const userId = $('modal-user-id').value;
+  const email = $('modal-email').value;
+  if (!confirm(`Delete user "${email}" and ALL their scores? This cannot be undone.`)) return;
+ 
+  try {
+    const res = await fetch('/api/admin', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + authToken },
+      body: JSON.stringify({ userId })
+    });
+    const data = await res.json();
+ 
+    if (!res.ok) {
+      $('admin-modal-msg').textContent = data.error;
+      $('admin-modal-msg').className = 'auth-msg auth-msg--error';
+      $('admin-modal-msg').style.display = 'block';
+      return;
+    }
+ 
+    $('admin-modal-overlay').style.display = 'none';
+    await loadAdminUsers();
+  } catch {
+    alert('Network error.');
+  }
+}
+ 

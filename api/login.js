@@ -2,10 +2,12 @@ import { MongoClient } from "mongodb";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 
-const client = new MongoClient(process.env.MONGO_URI);
+const client = new MongoClient(process.env.MONGODB_URI);
 
 export default async function handler(req, res) {
-  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed" });
+  }
 
   const { email, password } = req.body;
 
@@ -23,11 +25,15 @@ export default async function handler(req, res) {
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) return res.status(401).json({ error: "Wrong password." });
 
-    const token = jwt.sign({ id: user._id, email }, process.env.JWT_SECRET, { expiresIn: "7d" });
+    const token = jwt.sign(
+      { id: user._id, email },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" }
+    );
 
-    res.status(200).json({ token, email });
+    return res.status(200).json({ token, email });
   } catch (err) {
     console.error("Login error:", err);
-    res.status(500).json({ error: "Server error. Please try again." });
+    return res.status(500).json({ error: "Server error. Please try again." });
   }
 }

@@ -157,22 +157,7 @@ function hideAuthMsg() {
   $('auth-msg').style.display = 'none';
 }
 
-function onAuthSuccess(token, email) {
-  authToken = token;
-  authEmail = email;
-  localStorage.setItem('token', token);
-  localStorage.setItem('email', email);
-  updateUserBar();
-  showScreen('screen-home');
-}
-
-function logout() {
-  authToken = null;
-  authEmail = null;
-  localStorage.removeItem('token');
-  localStorage.removeItem('email');
-  showScreen('screen-auth');
-}
+// Functions moved to the admin panel section
 
 function updateUserBar() {
   if (authEmail) {
@@ -1064,7 +1049,7 @@ async function loadAdminUsers() {
   listEl.innerHTML = '<p class="dash-empty">Loading users…</p>';
 
   try {
-    const res = await fetch('/api/admin/users', {
+    const res = await fetch('/api/admin?action=users', {
       headers: { Authorization: 'Bearer ' + authToken }
     });
     if (!res.ok) {
@@ -1128,7 +1113,7 @@ function openAdminModal(userId) {
 
 async function loadUserScores(userId) {
   try {
-    const res = await fetch('/api/admin/scores/' + userId, {
+    const res = await fetch('/api/admin?action=scores&userId=' + userId, {
       headers: { Authorization: 'Bearer ' + authToken }
     });
     if (!res.ok) { $('modal-scores-list').innerHTML = '<p class="dash-empty">Could not load.</p>'; return; }
@@ -1161,10 +1146,10 @@ async function submitAdminEdit() {
   spinner.style.display = 'inline-flex';
 
   try {
-    const body = { displayName: name, email };
+    const body = { userId, displayName: name, newEmail: email };
     if (password) body.newPassword = password;
 
-    const res = await fetch('/api/admin/users/' + userId, {
+    const res = await fetch('/api/admin', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + authToken },
       body: JSON.stringify(body)
@@ -1196,9 +1181,10 @@ async function deleteUser() {
   if (!confirm('Delete this user? This cannot be undone.')) return;
 
   try {
-    const res = await fetch('/api/admin/users/' + userId, {
+    const res = await fetch('/api/admin', {
       method: 'DELETE',
-      headers: { Authorization: 'Bearer ' + authToken }
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + authToken },
+      body: JSON.stringify({ userId })
     });
     if (!res.ok) { alert('Could not delete user.'); return; }
     $('admin-modal-overlay').style.display = 'none';

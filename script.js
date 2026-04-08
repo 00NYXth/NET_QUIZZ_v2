@@ -857,40 +857,8 @@ $('browse-search').addEventListener('input', e => {
     : `(${ALL_QUESTIONS.length})`;
 });
 
- 
-/* ── Admin email list (citit din JWT după login) ──────────── */
-const ADMIN_EMAILS = (window.__ADMIN_EMAILS__ || '').split(',').map(e => e.trim().toLowerCase());
- 
-function checkAdmin() {
-  if (!authEmail) return false;
-  return ADMIN_EMAILS.includes(authEmail.toLowerCase());
-}
- 
-/* ── Actualizează user bar cu butonul Admin dacă e cazul ──── */
-function updateUserBarExtended() {
-  updateUserBar(); // funcția existentă
-  const adminBtn = $('btn-admin-panel');
-  if (adminBtn) adminBtn.style.display = checkAdmin() ? 'inline-flex' : 'none';
-}
- 
-// Înlocuiește apelurile existente la updateUserBar() cu updateUserBarExtended()
-// sau adaugă la finalul funcției onAuthSuccess:
-const _origOnAuthSuccess = onAuthSuccess;
-// Patch onAuthSuccess to also check admin
-function onAuthSuccess(token, email) {
-  authToken = token;
-  authEmail = email;
-  localStorage.setItem('token', token);
-  localStorage.setItem('email', email);
-  updateUserBarExtended();
-  showScreen('screen-home');
-}
- 
-// La încărcare, dacă deja logat:
-if (authToken && authEmail) {
-  updateUserBarExtended();
-}
- 
+
+
 /* ════════════════════════════════════════════════════════════
    DASHBOARD
    ════════════════════════════════════════════════════════════ */
@@ -1071,4 +1039,171 @@ function logout() {
   localStorage.removeItem('email');
   localStorage.removeItem('isAdmin');
   showScreen('screen-auth');
+}
+
+// La încărcare, dacă deja logat:
+if (authToken && authEmail) {
+  updateUserBarExtended();
+}
+
+/* ════════════════════════════════════════════════════════════
+   ADMIN PANEL – FUNCTIONS
+   ════════════════════════════════════════════════════════════ */
+
+let _adminUsers = [];
+
+async function openAdminPanel() {
+  if (!checkAdmin()) return;
+  showScreen('screen-admin');
+  await loadAdminUsers();
+}
+
+async function loadAdminUsers() {
+  const listEl = $('admin-user-list');
+  const countEl = $('admin-user-count');
+  listEl.innerHTML = '<p class="dash-empty">Loading users…</p>';
+
+  try {
+    const res = await fetch('/api/admin/users', {
+      headers: { Authorization: 'Bearer ' + authToken }
+    });
+    if (!res.ok) {
+      listEl.innerHTML = '<p class="dash-empty">Could not load users.</p>';
+      return;
+    }
+    const data = await res.json();
+    _adminUsers = data.users || data || [];
+    countEl.textContent = _adminUsers.length + ' users';
+    renderAdminUsers(_adminUsers);
+  } catch {
+    listEl.innerHTML = '<p class="dash-empty">Network error.</p>';
+  }
+}
+
+function renderAdminUsers(users) {
+  const listEl = $('admin-user-list');
+  if (!users.length) {
+    listEl.innerHTML = '<p class="dash-empty">No users found.</p>';
+    return;
+  }
+
+  listEl.innerHTML = users.map(u => `
+    <div class="glass-card dash-card" style="cursor:pointer;margin-bottom:8px" onclick="openAdminModal('${u._id || u.id}')">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <strong>${escH(u.displayName || u.email)}</strong>
+          <div style="font-size:.85em;opacity:.6">${escH(u.email)}</div>
+        </div>
+        <div style="font-size:.8em;opacity:.5">${u.isAdmin ? '🛡 Admin' : ''}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function filterAdminUsers() {
+  const term = $('admin-search').value.toLowerCase().trim();
+  const filtered = term
+    ? _adminUsers.filter(u =>
+        (u.email || '').toLowerCase().includes(term) ||
+        (u.displayName || '').toLowerCase().includes(term))
+    : _adminUsers;
+  $('admin-user-count').textContent = filtered.length + ' users';
+  renderAdminUsers(filtered);
+}
+
+function openAdminModal(userId) {
+  const user = _adminUsers.find(u => (u._id || u.id) === userId);
+  if (!user) return;
+
+  $('modal-user-id').value = userId;
+  $('modal-name').value = user.displayName || '';
+  $('modal-email').value = user.email || '';
+  $('modal-password').value = '';
+  $('admin-modal-msg').style.display = 'none';
+  $('modal-scores-list').innerHTML = '<p class="dash-empty">Loading…</p>';
+  $('admin-modal-overlay').style.display = 'flex';
+
+  loadUserScores(userId);
+}
+
+async function loadUserScores(userId) {
+  try {
+    const res = await fetch('/api/admin/scores/' + userId, {
+      headers: { Authorization: 'Bearer ' + authToken }
+    });
+    if (!res.ok) { $('modal-scores-list').innerHTML = '<p class="dash-empty">Could not load.</p>'; return; }
+    const { scores } = await res.json();
+    if (!scores || !scores.length) {
+      $('modal-scores-list').innerHTML = '<p class="dash-empty">No sessions yet.</p>';
+      return;
+    }
+    $('modal-scores-list').innerHTML = renderScoreRows(scores);
+  } catch {
+    $('modal-scores-list').innerHTML = '<p class="dash-empty">Error.</p>';
+  }
+}
+
+function closeAdminModal(e) {
+  if (!e || e.target === $('admin-modal-overlay')) {
+    $('admin-modal-overlay').style.display = 'none';
+  }
+}
+
+async function submitAdminEdit() {
+  const userId = $('modal-user-id').value;
+  const name = $('modal-name').value.trim();
+  const email = $('modal-email').value.trim();
+  const password = $('modal-password').value;
+  const msgEl = $('admin-modal-msg');
+  const spinner = $('modal-spinner');
+
+  msgEl.style.display = 'none';
+  spinner.style.display = 'inline-flex';
+
+  try {
+    const body = { displayName: name, email };
+    if (password) body.newPassword = password;
+
+    const res = await fetch('/api/admin/users/' + userId, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + authToken },
+      body: JSON.stringify(body)
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      msgEl.textContent = data.error || 'Error saving.';
+      msgEl.className = 'auth-msg auth-msg--error';
+      msgEl.style.display = 'block';
+      return;
+    }
+
+    msgEl.textContent = '✓ Saved!';
+    msgEl.className = 'auth-msg auth-msg--success';
+    msgEl.style.display = 'block';
+    await loadAdminUsers();
+  } catch {
+    msgEl.textContent = 'Network error.';
+    msgEl.className = 'auth-msg auth-msg--error';
+    msgEl.style.display = 'block';
+  } finally {
+    spinner.style.display = 'none';
+  }
+}
+
+async function deleteUser() {
+  const userId = $('modal-user-id').value;
+  if (!confirm('Delete this user? This cannot be undone.')) return;
+
+  try {
+    const res = await fetch('/api/admin/users/' + userId, {
+      method: 'DELETE',
+      headers: { Authorization: 'Bearer ' + authToken }
+    });
+    if (!res.ok) { alert('Could not delete user.'); return; }
+    $('admin-modal-overlay').style.display = 'none';
+    await loadAdminUsers();
+  } catch {
+    alert('Network error.');
+  }
 }

@@ -19,6 +19,7 @@
   },
   "homepage": "https://github.com/00NYXth/NET_QUIZZ_v2#readme",
   "dependencies": {
+    "@vercel/analytics": "^2.0.1",
     "bcryptjs": "^3.0.3",
     "jsonwebtoken": "^9.0.3",
     "mongodb": "^7.1.1"

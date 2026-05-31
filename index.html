@@ -653,10 +653,55 @@
           </select>
         </div>
 
-        <!-- Add question form -->
+        <!-- Import JSON file panel -->
+        <div class="glass-card dash-card" id="import-question-panel" style="display:none">
+          <h3 class="dash-section-title">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            Import Întrebări din Fișier JSON
+          </h3>
+          <div id="admin-import-msg" class="auth-msg" style="display:none"></div>
+
+          <!-- Drop zone -->
+          <div class="import-dropzone" id="import-dropzone"
+               onclick="document.getElementById('import-file-input').click()"
+               ondragover="event.preventDefault();this.classList.add('drag-over')"
+               ondragleave="this.classList.remove('drag-over')"
+               ondrop="handleImportDrop(event)">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color:var(--muted);margin-bottom:10px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            <p style="color:var(--text-dim);font-size:14px;font-weight:600">Trage fișierul JSON aici</p>
+            <p style="color:var(--muted);font-size:12px;margin-top:4px">sau apasă pentru a selecta</p>
+            <input type="file" id="import-file-input" accept=".json" style="display:none" onchange="handleImportFile(this)" />
+          </div>
+
+          <!-- Preview -->
+          <div id="import-preview" style="display:none;margin-top:12px">
+            <div class="import-preview-header">
+              <span id="import-preview-count" class="browse-count-chip"></span>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);cursor:pointer">
+                <input type="checkbox" id="import-skip-dupes" checked style="accent-color:var(--accent)" />
+                Sari peste duplicate
+              </label>
+            </div>
+            <div id="import-preview-list" class="import-preview-list"></div>
+          </div>
+
+          <div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap">
+            <button class="btn-primary" id="btn-do-import" onclick="doImport()" style="display:none">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              <span id="btn-do-import-label">Importă în baza de date</span>
+            </button>
+            <a class="btn-ghost btn-sm" id="download-template-btn" href="#" onclick="downloadTemplate(event)" style="text-decoration:none">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Descarcă template JSON
+            </a>
+          </div>
+        </div>
+
+        <!-- Add question manually panel -->
         <div class="glass-card dash-card" id="add-question-panel" style="display:none">
-          <h3 class="dash-section-title">Adaugă întrebare</h3>
+          <h3 class="dash-section-title">Adaugă întrebare manual</h3>
           <div id="admin-question-msg" class="auth-msg" style="display:none"></div>
+
           <div class="input-group">
             <textarea class="auth-input question-textarea" id="new-q-text" placeholder="Textul întrebării…" rows="3"></textarea>
           </div>

@@ -1162,10 +1162,17 @@ async function loadAdminQuestions() {
   const subjectId = $('admin-q-subject-select').value;
   const listEl    = $('admin-question-list');
   const addPanel  = $('add-question-panel');
+  const importPanel = $('import-question-panel');
 
-  if (!subjectId) { listEl.innerHTML = ''; addPanel.style.display = 'none'; return; }
+  if (!subjectId) {
+    listEl.innerHTML = ''; addPanel.style.display = 'none'; importPanel.style.display = 'none'; return;
+  }
   addPanel.style.display = 'block';
+  importPanel.style.display = 'block';
   listEl.innerHTML = '<p class="dash-empty">Se încarcă întrebările…</p>';
+
+  // Reset import state when switching subject
+  resetImportUI();
 
   try {
     const res  = await api(`/api/admin/questions?subjectId=${subjectId}`);
@@ -1176,6 +1183,180 @@ async function loadAdminQuestions() {
     listEl.innerHTML = '<p class="dash-empty">Eroare la încărcare.</p>';
   }
 }
+
+/* ── Import state ──────────────────────────────────────────── */
+let _importData = [];
+
+function resetImportUI() {
+  _importData = [];
+  $('import-preview').style.display = 'none';
+  $('btn-do-import').style.display  = 'none';
+  $('import-file-input').value      = '';
+  $('import-preview-list').innerHTML = '';
+  $('admin-import-msg').style.display = 'none';
+  const dz = $('import-dropzone');
+  if (dz) { dz.classList.remove('drag-over'); dz.innerHTML = `
+    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color:var(--muted);margin-bottom:10px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+    <p style="color:var(--text-dim);font-size:14px;font-weight:600">Trage fișierul JSON aici</p>
+    <p style="color:var(--muted);font-size:12px;margin-top:4px">sau apasă pentru a selecta</p>
+    <input type="file" id="import-file-input" accept=".json" style="display:none" onchange="handleImportFile(this)" />
+  `; }
+}
+
+function handleImportDrop(event) {
+  event.preventDefault();
+  $('import-dropzone').classList.remove('drag-over');
+  const file = event.dataTransfer.files[0];
+  if (file) processImportFile(file);
+}
+
+function handleImportFile(input) {
+  const file = input.files[0];
+  if (file) processImportFile(file);
+}
+
+function processImportFile(file) {
+  if (!file.name.endsWith('.json')) {
+    showImportMsg('Selectează un fișier .json valid.', 'error'); return;
+  }
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      let data = JSON.parse(e.target.result);
+      // Support both array and { questions: [...] } format
+      if (!Array.isArray(data) && Array.isArray(data.questions)) data = data.questions;
+      if (!Array.isArray(data)) throw new Error('Fișierul trebuie să conțină un array JSON.');
+
+      _importData = data;
+      renderImportPreview(data, file.name);
+    } catch (err) {
+      showImportMsg('❌ ' + (err.message || 'JSON invalid — verifică formatul fișierului.'), 'error');
+    }
+  };
+  reader.readAsText(file);
+}
+
+function renderImportPreview(data, filename) {
+  const valid = [], invalid = [];
+  data.forEach((q, i) => {
+    if (!q.question || !Array.isArray(q.options) || q.options.length < 2 || !Array.isArray(q.correct) || q.correct.length === 0) {
+      invalid.push({ i: i + 1, q: q.question || '(fără text)' });
+    } else {
+      valid.push(q);
+    }
+  });
+
+  $('import-preview-count').textContent = `${valid.length} valide / ${data.length} total`;
+  $('import-preview').style.display = 'block';
+  $('btn-do-import').style.display  = valid.length > 0 ? 'inline-flex' : 'none';
+  $('btn-do-import-label').textContent = `Importă ${valid.length} întrebări`;
+
+  const LETTERS = ['A','B','C','D','E'];
+  const listEl  = $('import-preview-list');
+
+  let html = '';
+  if (invalid.length > 0) {
+    html += `<div class="auth-msg auth-msg--error" style="margin-bottom:10px">
+      ⚠️ ${invalid.length} întrebări invalide vor fi sărite: ${invalid.slice(0,3).map(e=>`#${e.i}`).join(', ')}${invalid.length > 3 ? '…' : ''}
+    </div>`;
+  }
+  html += valid.slice(0, 5).map((q, i) => `
+    <div class="import-q-row">
+      <div class="import-q-num">Q${i+1}</div>
+      <div>
+        <div class="import-q-text">${escH(q.question).slice(0,80)}${q.question.length>80?'…':''}</div>
+        <div class="import-q-opts">${q.options.map((o,oi)=>`<span class="${q.correct.includes(oi)?'import-opt-correct':''}">${LETTERS[oi]}. ${escH(String(o).slice(0,30))}</span>`).join(' ')}</div>
+      </div>
+    </div>
+  `).join('');
+  if (valid.length > 5) {
+    html += `<p class="dash-empty" style="padding:8px 0">…și încă ${valid.length - 5} întrebări</p>`;
+  }
+  listEl.innerHTML = html;
+
+  // Update dropzone to show filename
+  $('import-dropzone').innerHTML = `
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--green)"><polyline points="20 6 9 17 4 12"/></svg>
+    <p style="color:var(--green);font-size:14px;font-weight:600;margin-top:6px">${escH(filename)}</p>
+    <p style="color:var(--muted);font-size:12px;margin-top:2px">${data.length} întrebări detectate · <span onclick="resetImportUI()" style="color:var(--accent);cursor:pointer">Schimbă fișierul</span></p>
+    <input type="file" id="import-file-input" accept=".json" style="display:none" onchange="handleImportFile(this)" />
+  `;
+  $('admin-import-msg').style.display = 'none';
+}
+
+async function doImport() {
+  const subjectId = $('admin-q-subject-select').value;
+  if (!subjectId || !_importData.length) return;
+
+  const skipDuplicates = $('import-skip-dupes')?.checked ?? true;
+  const btn = $('btn-do-import');
+  btn.disabled = true;
+  $('btn-do-import-label').textContent = 'Se importă…';
+
+  try {
+    const res  = await api('/api/admin/questions', {
+      method: 'POST',
+      body: JSON.stringify({ subjectId, bulk: _importData, skipDuplicates })
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      showImportMsg('❌ ' + (data.error || 'Eroare la import.'), 'error');
+      return;
+    }
+
+    showImportMsg(
+      `✅ ${data.message}` + (data.warnings?.length ? `\n⚠️ ${data.warnings.join(' | ')}` : ''),
+      'success'
+    );
+    _importData = [];
+    $('btn-do-import').style.display = 'none';
+    $('import-preview').style.display = 'none';
+    await loadAdminQuestions();
+    await loadAdminSubjects();
+  } catch {
+    showImportMsg('❌ Eroare de rețea. Încearcă din nou.', 'error');
+  } finally {
+    btn.disabled = false;
+    $('btn-do-import-label').textContent = 'Importă în baza de date';
+  }
+}
+
+function showImportMsg(text, type) {
+  const el = $('admin-import-msg');
+  el.textContent = text;
+  el.className   = 'auth-msg auth-msg--' + type;
+  el.style.display = 'block';
+}
+
+function downloadTemplate(event) {
+  event.preventDefault();
+  const template = [
+    {
+      "question": "Ce înseamnă OOP?",
+      "options": [
+        "Object-Oriented Programming",
+        "Online Object Processing",
+        "Open Operating Platform",
+        "Object Oriented Protocol"
+      ],
+      "correct": [0],
+      "multiple": false
+    },
+    {
+      "question": "Care dintre următoarele sunt tipuri de date în C#?",
+      "options": ["int", "string", "bool", "html"],
+      "correct": [0, 1, 2],
+      "multiple": true
+    }
+  ];
+  const blob = new Blob([JSON.stringify(template, null, 2)], { type: 'application/json' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = 'template-intrebari.json'; a.click();
+  URL.revokeObjectURL(url);
+}
+
 
 function renderAdminQuestions(questions, subjectId) {
   const listEl = $('admin-question-list');

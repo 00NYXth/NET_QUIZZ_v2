@@ -722,7 +722,7 @@ async function saveScore(payload) {
   statusEl.style.display = 'block';
 
   try {
-    const res = await api('/api/saveScore', { method: 'POST', body: JSON.stringify(payload) });
+    const res = await api('/api/scores', { method: 'POST', body: JSON.stringify(payload) });
     if (res.status === 401 || res.status === 403) {
       statusEl.textContent = '⚠️ Sesiune expirată. Te-ai deconectat.';
       statusEl.className   = 'save-status save-status--error';

@@ -1,9 +1,11 @@
 {
   "name": "net_quizz_v2",
-  "version": "1.0.0",
-  "description": "",
-  "main": "questions_data.js",
+  "version": "2.0.0",
+  "description": "NetQuiz — Multi-subject IT certification quiz platform",
+  "type": "module",
   "scripts": {
+    "migrate": "node scripts/migrate-questions.js",
+    "setup-telegram": "node scripts/setup-telegram.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
@@ -13,13 +15,14 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
   "bugs": {
     "url": "https://github.com/00NYXth/NET_QUIZZ_v2/issues"
   },
   "homepage": "https://github.com/00NYXth/NET_QUIZZ_v2#readme",
   "dependencies": {
     "bcryptjs": "^3.0.3",
+    "cookie": "^1.0.2",
+    "dotenv": "^16.5.0",
     "jsonwebtoken": "^9.0.3",
     "mongodb": "^7.1.1"
   }

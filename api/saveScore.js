@@ -1,27 +1,42 @@
-import { MongoClient } from "mongodb";
-import jwt from "jsonwebtoken";
+import { requireApproved } from "./_lib/auth.js";
+import { getDb } from "./_lib/db.js";
 
-const client = new MongoClient(process.env.MONGODB_URI);
+// Allowlist of fields that can be saved — prevents req.body spread injection
+const ALLOWED_FIELDS = ["score", "correct", "total", "mode", "subjectId", "subjectName"];
 
 export default async function handler(req, res) {
-  const token = req.headers.authorization?.split(" ")[1];
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed" });
+  }
+
+  const user = await requireApproved(req, res);
+  if (!user) return;
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const db = await getDb();
+    const body = req.body || {};
 
-    await client.connect();
-    const db = client.db("quiz");
-
-    await db.collection("scores").insertOne({
-      userId: decoded.id,
-      ...req.body,
+    // Sanitize: only pick known fields — no ...req.body spread
+    const doc = {
+      userId: user.id,
       createdAt: new Date()
-    });
+    };
 
+    for (const field of ALLOWED_FIELDS) {
+      if (body[field] !== undefined) {
+        doc[field] = body[field];
+      }
+    }
+
+    // Basic validation
+    if (typeof doc.correct !== "number" || typeof doc.total !== "number") {
+      return res.status(400).json({ error: "correct and total are required numbers" });
+    }
+
+    await db.collection("scores").insertOne(doc);
     return res.status(200).json({ message: "Saved" });
-
   } catch (err) {
     console.error("SaveScore error:", err);
-    return res.status(401).json({ error: "Unauthorized" });
+    return res.status(500).json({ error: "Server error" });
   }
 }

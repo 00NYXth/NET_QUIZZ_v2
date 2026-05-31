@@ -1,29 +1,26 @@
-import { MongoClient } from "mongodb";
-import jwt from "jsonwebtoken";
-
-const client = new MongoClient(process.env.MONGODB_URI);
+import { requireApproved } from "./_lib/auth.js";
+import { getDb } from "./_lib/db.js";
 
 export default async function handler(req, res) {
-  if (req.method !== "GET") return res.status(405).json({ error: "Method not allowed" });
-
-  const token = req.headers.authorization?.split(" ")[1];
-  if (!token) return res.status(401).json({ error: "Unauthorized" });
-
-  let decoded;
-  try {
-    decoded = jwt.verify(token, process.env.JWT_SECRET);
-  } catch {
-    return res.status(401).json({ error: "Invalid token" });
+  if (req.method !== "GET") {
+    return res.status(405).json({ error: "Method not allowed" });
   }
 
-  await client.connect();
-  const db = client.db("quiz");
+  const user = await requireApproved(req, res);
+  if (!user) return;
 
-  const scores = await db.collection("scores")
-    .find({ userId: decoded.id })
-    .sort({ createdAt: -1 })
-    .limit(50)
-    .toArray();
+  try {
+    const db = await getDb();
+    const scores = await db
+      .collection("scores")
+      .find({ userId: user.id })
+      .sort({ createdAt: -1 })
+      .limit(50)
+      .toArray();
 
-  return res.status(200).json({ scores });
+    return res.status(200).json({ scores });
+  } catch (err) {
+    console.error("Scores error:", err);
+    return res.status(500).json({ error: "Server error" });
+  }
 }

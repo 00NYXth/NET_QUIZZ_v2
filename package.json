@@ -20,6 +20,7 @@
   },
   "homepage": "https://github.com/00NYXth/NET_QUIZZ_v2#readme",
   "dependencies": {
+    "@vercel/analytics": "^2.0.1",
     "bcryptjs": "^3.0.3",
     "cookie": "^1.0.2",
     "dotenv": "^16.5.0",
